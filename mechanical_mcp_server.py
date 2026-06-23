@@ -23,6 +23,11 @@ def _json(data):
     return json.dumps(data, indent=2, ensure_ascii=False)
 
 
+def _esc(s: str) -> str:
+    """Escape a user string for safe embedding in an IronPython double-quoted string literal."""
+    return s.replace("\\", "\\\\").replace('"', '\\"')
+
+
 def _check_connection():
     if _mechanical is None:
         return _json({"ok": False, "error": "Not connected to Mechanical. Call connect_to_mechanical first."})
@@ -185,8 +190,8 @@ def assign_material(body_name: str, material_name: str) -> str:
     err = _check_connection()
     if err:
         return err
-    safe_body = body_name.replace("\\", "\\\\").replace('"', '\\"')
-    safe_mat = material_name.replace("\\", "\\\\").replace('"', '\\"')
+    safe_body = _esc(body_name)
+    safe_mat = _esc(material_name)
     script = (
         "model = ExtAPI.DataModel.Project.Model\n"
         "assigned = False\n"
@@ -256,7 +261,7 @@ def add_fixed_support(named_selection: str, analysis_index: int = 0) -> str:
     err = _check_connection()
     if err:
         return err
-    safe_ns = named_selection.replace("\\", "\\\\").replace('"', '\\"')
+    safe_ns = _esc(named_selection)
     script = (
         "import json\n"
         '_NS_NAME = "' + safe_ns + '"\n'
@@ -288,7 +293,7 @@ def add_force(
     err = _check_connection()
     if err:
         return err
-    safe_ns = named_selection.replace("\\", "\\\\").replace('"', '\\"')
+    safe_ns = _esc(named_selection)
     script = (
         "import json\n"
         '_NS_NAME = "' + safe_ns + '"\n'
@@ -318,7 +323,7 @@ def add_pressure(named_selection: str, magnitude_pa: float, analysis_index: int 
     err = _check_connection()
     if err:
         return err
-    safe_ns = named_selection.replace("\\", "\\\\").replace('"', '\\"')
+    safe_ns = _esc(named_selection)
     script = (
         "import json\n"
         '_NS_NAME = "' + safe_ns + '"\n'
@@ -498,7 +503,7 @@ def generate_report(output_path: str, analysis_index: int = 0, fmt: str = "docx"
     except Exception:
         return _json({"ok": False, "error": "Failed to gather data", "raw": raw})
     out = Path(output_path)
-    out.parent.mkdir(parents=True, exist_ok=True)
+    out.parent.mkdir(exist_ok=True)
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     if fmt.lower() == "docx":
         try:
@@ -644,7 +649,7 @@ def delete_named_selection(name: str) -> str:
     err = _check_connection()
     if err:
         return err
-    safe_name = name.replace("\\", "\\\\").replace('"', '\\"')
+    safe_name = _esc(name)
     result = _run(
         "import json\n"
         '_NS_NAME = "' + safe_name + '"\n' + _NS_LOOKUP + "if _ns is None:\n"
@@ -674,7 +679,7 @@ def suppress_bodies(name_prefix: str = "", suppress: bool = True) -> str:
     action = "True" if suppress else "False"
     result = _run(
         "import json\n"
-        '_PREFIX = "' + name_prefix.replace("\\", "\\\\").replace('"', '\\"') + '"\n'
+        '_PREFIX = "' + _esc(name_prefix) + '"\n'
         "_changed = []\n"
         "for _b in ExtAPI.DataModel.Project.Model.Geometry.GetChildren(DataModelObjectCategory.Body, True):\n"
         '    if _PREFIX == "" or str(_b.Name).startswith(_PREFIX):\n'
@@ -733,7 +738,7 @@ def add_frictionless_support(named_selection: str, analysis_index: int = 0) -> s
     result = _run(
         "import json\n"
         '_NS_NAME = "'
-        + named_selection.replace("\\", "\\\\").replace('"', '\\"')
+        + _esc(named_selection)
         + '"\n'
         + _NS_LOOKUP
         + "if _ns is None:\n"
@@ -779,7 +784,7 @@ def add_displacement(
     result = _run(
         "import json\n"
         '_NS_NAME = "'
-        + named_selection.replace("\\", "\\\\").replace('"', '\\"')
+        + _esc(named_selection)
         + '"\n'
         + _NS_LOOKUP
         + "if _ns is None:\n"
@@ -843,7 +848,7 @@ def add_remote_displacement(
     result = _run(
         "import json\n"
         '_NS_NAME = "'
-        + named_selection.replace("\\", "\\\\").replace('"', '\\"')
+        + _esc(named_selection)
         + '"\n'
         + _NS_LOOKUP
         + "if _ns is None:\n"
@@ -917,7 +922,7 @@ def add_remote_force(
     result = _run(
         "import json\n"
         '_NS_NAME = "'
-        + named_selection.replace("\\", "\\\\").replace('"', '\\"')
+        + _esc(named_selection)
         + '"\n'
         + _NS_LOOKUP
         + "if _ns is None:\n"
@@ -954,7 +959,7 @@ def add_moment(
     result = _run(
         "import json\n"
         '_NS_NAME = "'
-        + named_selection.replace("\\", "\\\\").replace('"', '\\"')
+        + _esc(named_selection)
         + '"\n'
         + _NS_LOOKUP
         + "if _ns is None:\n"
@@ -990,7 +995,7 @@ def add_equivalent_stress(named_selection: str = "", analysis_index: int = 0) ->
         return err
     scope_lines = ""
     if named_selection:
-        safe_ns = named_selection.replace("\\", "\\\\").replace('"', '\\"')
+        safe_ns = _esc(named_selection)
         scope_lines = '_NS_NAME = "' + safe_ns + '"\n' + _NS_LOOKUP + "if _ns: _r.Location = _ns\n"
     result = _run(
         "import json\n"
@@ -1022,7 +1027,7 @@ def add_directional_deformation(
     axis_enum = axis_map.get(axis.upper(), "NormalOrientationType.YAxis")
     scope_lines = ""
     if named_selection:
-        safe_ns = named_selection.replace("\\", "\\\\").replace('"', '\\"')
+        safe_ns = _esc(named_selection)
         scope_lines = '_NS_NAME = "' + safe_ns + '"\n' + _NS_LOOKUP + "if _ns: _r.Location = _ns\n"
     result = _run(
         "import json\n"
@@ -1036,7 +1041,7 @@ def add_directional_deformation(
         + scope_lines
         + "_solution.EvaluateAllResults()\n"
         'print(json.dumps({"ok": True, "axis": "'
-        + axis.upper()
+        + _esc(axis.upper())
         + '", "max": str(_r.Maximum), "min": str(_r.Minimum)}))\n'
     )
     try:
@@ -1065,7 +1070,7 @@ def add_principal_stress(which: str = "max", analysis_index: int = 0) -> str:
         "_r = _solution." + method + "()\n"
         "_solution.EvaluateAllResults()\n"
         'print(json.dumps({"ok": True, "type": "'
-        + which
+        + _esc(which)
         + ' principal", "max": str(_r.Maximum), "min": str(_r.Minimum)}))\n'
     )
     try:
@@ -1104,7 +1109,7 @@ def add_reaction_force(named_selection: str, analysis_index: int = 0) -> str:
     result = _run(
         "import json\n"
         '_NS_NAME = "'
-        + named_selection.replace("\\", "\\\\").replace('"', '\\"')
+        + _esc(named_selection)
         + '"\n'
         + _NS_LOOKUP
         + "if _ns is None:\n"
@@ -1323,7 +1328,7 @@ def convert_prefix_to_point_mass(body_name_prefix: str, proximity_multiplier: fl
         '_PREFIX = binascii.unhexlify("' + prefix_hex + '").decode("utf-8")\n'
         "matched = [b for b in all_bodies if b.Name.startswith(_PREFIX) and not b.Suppressed]\n"
     )
-    ns_label = body_name_prefix[:40].replace(" ", "_").replace("\\", "_").replace("/", "_").replace('"', "_")
+    ns_label = body_name_prefix[:40].replace(" ", "_").replace("\\", "_").replace("/", "_").replace('"', "_").replace("\n", "").replace("\r", "").replace("\t", "")
     raw = _run(_build_pm_script(match, ns_label, proximity_multiplier))
     return _json(_extract_json(raw))
 
@@ -1337,12 +1342,12 @@ def convert_part_to_point_mass(part_name: str, proximity_multiplier: float = 3.0
     err = _check_connection()
     if err:
         return err
-    safe_part = part_name.replace("\\", "\\\\").replace('"', '\\"')
+    safe_part = _esc(part_name)
     match = (
         '_PART = "' + safe_part + '"\n'
         "matched = [b for b in all_bodies if str(b.Parent.Name) == _PART and not b.Suppressed]\n"
     )
-    ns_label = part_name[:40].replace(" ", "_").replace("\\", "_").replace("/", "_").replace('"', "_")
+    ns_label = part_name[:40].replace(" ", "_").replace("\\", "_").replace("/", "_").replace('"', "_").replace("\n", "").replace("\r", "").replace("\t", "")
     raw = _run(_build_pm_script(match, ns_label, proximity_multiplier))
     return _json(_extract_json(raw))
 
