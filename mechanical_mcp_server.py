@@ -496,7 +496,10 @@ def generate_report(output_path: str, analysis_index: int = 0, fmt: str = "docx"
     except Exception:
         return _json({"ok": False, "error": "Failed to gather data", "raw": raw})
     out = Path(output_path)
-    out.parent.mkdir(exist_ok=True)
+    try:
+        out.parent.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        return _json({"ok": False, "error": "Cannot create output directory: " + str(e)})
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     if fmt.lower() == "docx":
         try:
@@ -997,7 +1000,8 @@ def add_directional_deformation(
         "Y": "NormalOrientationType.YAxis",
         "Z": "NormalOrientationType.ZAxis",
     }
-    axis_enum = axis_map.get(axis.upper(), "NormalOrientationType.YAxis")
+    axis_key = axis.upper() if axis.upper() in axis_map else "Y"
+    axis_enum = axis_map[axis_key]
     scope_lines = ""
     if named_selection:
         safe_ns = _esc(named_selection)
@@ -1014,7 +1018,7 @@ def add_directional_deformation(
         + scope_lines
         + "_solution.EvaluateAllResults()\n"
         'print(json.dumps({"ok": True, "axis": "'
-        + _esc(axis.upper())
+        + axis_key
         + '", "max": str(_r.Maximum), "min": str(_r.Minimum)}))\n'
     )
     try:
