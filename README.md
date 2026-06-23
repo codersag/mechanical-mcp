@@ -87,8 +87,6 @@ Restart your client after editing the config.
 
 Mechanical exposes a gRPC server whose port you pass to `connect_to_mechanical`.
 
-**Option A — Workbench scripting console**
-
 In Workbench (`Tools → Scripting → Run Script`):
 
 ```python
@@ -98,21 +96,7 @@ result = wbjn.ExecuteCommand(Services, cmd)
 print(result)
 ```
 
-**Option B — PowerShell**
-
-```powershell
-Get-NetTCPConnection -State Listen | Where-Object {$_.LocalPort -ge 10000 -and $_.LocalPort -le 10010}
-```
-
-This lists all ports Mechanical is listening on.
-
-**Option C — Just try the default**
-
-The default port is **10000**. If only one Mechanical instance is open, just connect directly:
-
-> "Connect to Mechanical on port 10000"
-
-If you have multiple Mechanical systems open (e.g. Modal + Static Structural), each runs on a different port — use Option B to list them all.
+The default port is **10000**. If you have multiple Mechanical systems open (e.g. Modal + Static Structural), each runs on a different port — run the script above to get the correct one.
 
 ## Usage
 
