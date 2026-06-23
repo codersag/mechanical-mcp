@@ -58,13 +58,15 @@ def _run(script):
             "_sys.stdout=_cap\n"
             "try:\n"
             "    import io as _io\n"
-            "    with _io.open('" + _SCRIPTFILE + "', encoding='utf-8') as _sf: _code=_sf.read()\n"
+            '    with _io.open(r"'
+            + _SCRIPTFILE.replace('"', '\\"')
+            + "\", encoding='utf-8') as _sf: _code=_sf.read()\n"
             "    exec(_code, globals())\n"
             "except Exception as _e:\n"
             "    _cap.d.append('Script error: ' + str(_e) + '\\n')\n"
             "finally:\n"
             "    _sys.stdout=_orig\n"
-            "    with open('" + _OUTFILE + "','w') as _f:\n"
+            '    with open(r"' + _OUTFILE.replace('"', '\\"') + "\", 'w') as _f:\n"
             "        _f.write(''.join(_cap.d))\n"
         )
 
@@ -709,6 +711,7 @@ def list_point_masses() -> str:
         '        ns_name = str(pm.Location.Name) if pm.Location else "None"\n'
         '    except: ns_name = "None"\n'
         '    out.append({"name": str(pm.Name),\n'
+        '        "mass_kg": round(_qm(pm.Mass),6),\n'
         '        "cg_mm": [round(_qm(pm.XCoordinate)*1000,1), round(_qm(pm.YCoordinate)*1000,1), round(_qm(pm.ZCoordinate)*1000,1)],\n'
         '        "pinball": str(pm.PinballRegion),\n'
         '        "named_selection": ns_name})\n'
