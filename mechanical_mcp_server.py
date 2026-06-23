@@ -372,7 +372,7 @@ def solve_analysis(analysis_index: int = 0) -> str:
         'print("Solve complete. Status: " + str(analysis.Solution.Status))\n'
     )
     result = _run(script)
-    ok = "Script error:" not in result and "Failed" not in result
+    ok = "Script error:" not in result and "failed" not in result.lower()
     return _json({"ok": ok, "message": result})
 
 
@@ -644,13 +644,14 @@ def delete_named_selection(name: str) -> str:
     err = _check_connection()
     if err:
         return err
+    safe_name = name.replace("\\", "\\\\").replace('"', '\\"')
     result = _run(
         "import json\n"
-        '_NS_NAME = "' + name.replace('"', '\\"') + '"\n' + _NS_LOOKUP + "if _ns is None:\n"
-        '    print(json.dumps({"ok": False, "error": "Not found: ' + name + '"}))\n'
+        '_NS_NAME = "' + safe_name + '"\n' + _NS_LOOKUP + "if _ns is None:\n"
+        '    print(json.dumps({"ok": False, "error": "Not found: ' + safe_name + '"}))\n'
         "else:\n"
         "    _ns.Delete()\n"
-        '    print(json.dumps({"ok": True, "deleted": "' + name + '"}))\n'
+        '    print(json.dumps({"ok": True, "deleted": "' + safe_name + '"}))\n'
     )
     try:
         return _json(json.loads(result))
@@ -989,7 +990,7 @@ def add_equivalent_stress(named_selection: str = "", analysis_index: int = 0) ->
         return err
     scope_lines = ""
     if named_selection:
-        safe_ns = named_selection.replace('"', '\\"')
+        safe_ns = named_selection.replace("\\", "\\\\").replace('"', '\\"')
         scope_lines = '_NS_NAME = "' + safe_ns + '"\n' + _NS_LOOKUP + "if _ns: _r.Location = _ns\n"
     result = _run(
         "import json\n"
@@ -1021,7 +1022,7 @@ def add_directional_deformation(
     axis_enum = axis_map.get(axis.upper(), "NormalOrientationType.YAxis")
     scope_lines = ""
     if named_selection:
-        safe_ns = named_selection.replace('"', '\\"')
+        safe_ns = named_selection.replace("\\", "\\\\").replace('"', '\\"')
         scope_lines = '_NS_NAME = "' + safe_ns + '"\n' + _NS_LOOKUP + "if _ns: _r.Location = _ns\n"
     result = _run(
         "import json\n"
@@ -1341,7 +1342,7 @@ def convert_part_to_point_mass(part_name: str, proximity_multiplier: float = 3.0
         '_PART = "' + safe_part + '"\n'
         "matched = [b for b in all_bodies if str(b.Parent.Name) == _PART and not b.Suppressed]\n"
     )
-    ns_label = part_name[:40].replace(" ", "_")
+    ns_label = part_name[:40].replace(" ", "_").replace("\\", "_").replace("/", "_").replace('"', "_")
     raw = _run(_build_pm_script(match, ns_label, proximity_multiplier))
     return _json(_extract_json(raw))
 
