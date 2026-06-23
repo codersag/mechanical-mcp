@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+venv/
+.venv/
+.claude/
+mech_out.txt
+mech_script.py
+*.wbpj
+*.mechdb
+*.mp4

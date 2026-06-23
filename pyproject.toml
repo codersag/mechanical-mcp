@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "ansys-mechanical-mcp"
+version = "1.0.0"
+description = "MCP server that connects AI clients to ANSYS Mechanical via PyMechanical gRPC"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+authors = [{ name = "Sagar Mali" }]
+keywords = ["ansys", "mechanical", "mcp", "fea", "simulation", "cae"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+    "ansys-mechanical-core>=0.10.0",
+    "mcp[cli]>=1.0.0",
+]
+
+[project.urls]
+Repository = "https://github.com/codersag/mechanical-mcp"
+"Bug Tracker" = "https://github.com/codersag/mechanical-mcp/issues"
+
+[project.scripts]
+ansys-mechanical-mcp = "mechanical_mcp_server:main"
+
+[project.optional-dependencies]
+report = [
+    "python-docx>=1.1.0",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "black",
+    "ruff",
+]
+
+[tool.setuptools]
+py-modules = ["mechanical_mcp_server"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.black]
+line-length = 100

@@ -1,0 +1,6 @@
+ansys-mechanical-core>=0.10.0
+mcp[cli]>=1.0.0
+
+# Optional: needed only for generate_report(..., fmt="docx")
+# pip install "ansys-mechanical-mcp[report]"
+# python-docx>=1.1.0
