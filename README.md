@@ -90,10 +90,8 @@ Mechanical exposes a gRPC server whose port you pass to `connect_to_mechanical`.
 In Workbench (`Tools → Scripting → Run Script`):
 
 ```python
-import wbjn
-cmd = 'mechanical.GetServerPort()'
-result = wbjn.ExecuteCommand(Services, cmd)
-print(result)
+port = GetSystem("SYS").GetContainer(ComponentName="Model").StartGrpcServer()
+print(port)
 ```
 
 The default port is **10000**. If you have multiple Mechanical systems open (e.g. Modal + Static Structural), each runs on a different port — run the script above to get the correct one.
