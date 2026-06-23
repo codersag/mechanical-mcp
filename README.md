@@ -36,21 +36,15 @@ Works with any MCP-compatible client, including:
 ## Installation
 
 ```bash
-pip install ansys-mechanical-mcp
+git clone https://github.com/codersag/mechanical-mcp.git
+cd mechanical-mcp
+pip install -e .
 ```
 
 To include DOCX report generation:
 
 ```bash
-pip install "ansys-mechanical-mcp[report]"
-```
-
-Or from source:
-
-```bash
-git clone https://github.com/codersag/mechanical-mcp.git
-cd mechanical-mcp
-pip install -e .
+pip install -e ".[report]"
 ```
 
 ## MCP Client Configuration
