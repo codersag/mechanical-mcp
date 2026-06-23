@@ -92,11 +92,11 @@ Mechanical exposes a gRPC server whose port you pass to `connect_to_mechanical`.
 From any Python terminal with `ansys-mechanical-core` installed:
 
 ```python
-from ansys.mechanical.core import find_mechanical_instances
-print(find_mechanical_instances())
+from ansys.mechanical.core import find_mechanical
+print(find_mechanical())
 ```
 
-This scans for all running Mechanical gRPC servers on the local machine and prints each one's port.
+This returns the path to the installed Mechanical executable. To find the gRPC port, check the Mechanical log file (Option B below).
 
 **Option B — Mechanical log file**
 
