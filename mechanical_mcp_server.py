@@ -30,7 +30,9 @@ def _esc(s: str) -> str:
 
 def _check_connection():
     if _mechanical is None:
-        return _json({"ok": False, "error": "Not connected to Mechanical. Call connect_to_mechanical first."})
+        return _json(
+            {"ok": False, "error": "Not connected to Mechanical. Call connect_to_mechanical first."}
+        )
     return None
 
 
@@ -264,9 +266,7 @@ def add_fixed_support(named_selection: str, analysis_index: int = 0) -> str:
     safe_ns = _esc(named_selection)
     script = (
         "import json\n"
-        '_NS_NAME = "' + safe_ns + '"\n'
-        + _NS_LOOKUP
-        + "if _ns is None:\n"
+        '_NS_NAME = "' + safe_ns + '"\n' + _NS_LOOKUP + "if _ns is None:\n"
         '    print(json.dumps({"ok": False, "error": "Named selection not found"}))\n'
         "else:\n"
         "    _analysis = ExtAPI.DataModel.Project.Model.Analyses[" + str(analysis_index) + "]\n"
@@ -296,9 +296,7 @@ def add_force(
     safe_ns = _esc(named_selection)
     script = (
         "import json\n"
-        '_NS_NAME = "' + safe_ns + '"\n'
-        + _NS_LOOKUP
-        + "if _ns is None:\n"
+        '_NS_NAME = "' + safe_ns + '"\n' + _NS_LOOKUP + "if _ns is None:\n"
         '    print(json.dumps({"ok": False, "error": "Named selection not found"}))\n'
         "else:\n"
         "    _analysis = ExtAPI.DataModel.Project.Model.Analyses[" + str(analysis_index) + "]\n"
@@ -326,17 +324,13 @@ def add_pressure(named_selection: str, magnitude_pa: float, analysis_index: int 
     safe_ns = _esc(named_selection)
     script = (
         "import json\n"
-        '_NS_NAME = "' + safe_ns + '"\n'
-        + _NS_LOOKUP
-        + "if _ns is None:\n"
+        '_NS_NAME = "' + safe_ns + '"\n' + _NS_LOOKUP + "if _ns is None:\n"
         '    print(json.dumps({"ok": False, "error": "Named selection not found"}))\n'
         "else:\n"
         "    _analysis = ExtAPI.DataModel.Project.Model.Analyses[" + str(analysis_index) + "]\n"
         "    _bc = _analysis.AddPressure()\n"
         "    _bc.Location = _ns\n"
-        "    _bc.Magnitude.Output.SetDiscreteValue(0, Quantity("
-        + str(magnitude_pa)
-        + ', "Pa"))\n'
+        "    _bc.Magnitude.Output.SetDiscreteValue(0, Quantity(" + str(magnitude_pa) + ', "Pa"))\n'
         '    print(json.dumps({"ok": True, "message": "Pressure added"}))\n'
     )
     result = _run(script)
@@ -457,7 +451,6 @@ def get_modal_frequencies(analysis_index: int = 0) -> str:
         return _json({"ok": True, **json.loads(result)})
     except Exception:
         return _json({"ok": True, "raw_output": result})
-
 
 
 @mcp.tool()
@@ -737,11 +730,7 @@ def add_frictionless_support(named_selection: str, analysis_index: int = 0) -> s
         return err
     result = _run(
         "import json\n"
-        '_NS_NAME = "'
-        + _esc(named_selection)
-        + '"\n'
-        + _NS_LOOKUP
-        + "if _ns is None:\n"
+        '_NS_NAME = "' + _esc(named_selection) + '"\n' + _NS_LOOKUP + "if _ns is None:\n"
         '    print(json.dumps({"ok": False, "error": "Named selection not found"}))\n'
         "else:\n"
         "    _bc = ExtAPI.DataModel.Project.Model.Analyses["
@@ -783,11 +772,7 @@ def add_displacement(
 
     result = _run(
         "import json\n"
-        '_NS_NAME = "'
-        + _esc(named_selection)
-        + '"\n'
-        + _NS_LOOKUP
-        + "if _ns is None:\n"
+        '_NS_NAME = "' + _esc(named_selection) + '"\n' + _NS_LOOKUP + "if _ns is None:\n"
         '    print(json.dumps({"ok": False, "error": "Named selection not found"}))\n'
         "else:\n"
         "    _bc = ExtAPI.DataModel.Project.Model.Analyses["
@@ -847,11 +832,7 @@ def add_remote_displacement(
 
     result = _run(
         "import json\n"
-        '_NS_NAME = "'
-        + _esc(named_selection)
-        + '"\n'
-        + _NS_LOOKUP
-        + "if _ns is None:\n"
+        '_NS_NAME = "' + _esc(named_selection) + '"\n' + _NS_LOOKUP + "if _ns is None:\n"
         '    print(json.dumps({"ok": False, "error": "Named selection not found"}))\n'
         "else:\n"
         "    _bc = ExtAPI.DataModel.Project.Model.Analyses["
@@ -921,11 +902,7 @@ def add_remote_force(
         return err
     result = _run(
         "import json\n"
-        '_NS_NAME = "'
-        + _esc(named_selection)
-        + '"\n'
-        + _NS_LOOKUP
-        + "if _ns is None:\n"
+        '_NS_NAME = "' + _esc(named_selection) + '"\n' + _NS_LOOKUP + "if _ns is None:\n"
         '    print(json.dumps({"ok": False, "error": "Named selection not found"}))\n'
         "else:\n"
         "    _bc = ExtAPI.DataModel.Project.Model.Analyses["
@@ -958,11 +935,7 @@ def add_moment(
         return err
     result = _run(
         "import json\n"
-        '_NS_NAME = "'
-        + _esc(named_selection)
-        + '"\n'
-        + _NS_LOOKUP
-        + "if _ns is None:\n"
+        '_NS_NAME = "' + _esc(named_selection) + '"\n' + _NS_LOOKUP + "if _ns is None:\n"
         '    print(json.dumps({"ok": False, "error": "Named selection not found"}))\n'
         "else:\n"
         "    _bc = ExtAPI.DataModel.Project.Model.Analyses["
@@ -1108,11 +1081,7 @@ def add_reaction_force(named_selection: str, analysis_index: int = 0) -> str:
         return err
     result = _run(
         "import json\n"
-        '_NS_NAME = "'
-        + _esc(named_selection)
-        + '"\n'
-        + _NS_LOOKUP
-        + "if _ns is None:\n"
+        '_NS_NAME = "' + _esc(named_selection) + '"\n' + _NS_LOOKUP + "if _ns is None:\n"
         '    print(json.dumps({"ok": False, "error": "Named selection not found"}))\n'
         "else:\n"
         "    _solution = ExtAPI.DataModel.Project.Model.Analyses["
@@ -1328,7 +1297,16 @@ def convert_prefix_to_point_mass(body_name_prefix: str, proximity_multiplier: fl
         '_PREFIX = binascii.unhexlify("' + prefix_hex + '").decode("utf-8")\n'
         "matched = [b for b in all_bodies if b.Name.startswith(_PREFIX) and not b.Suppressed]\n"
     )
-    ns_label = body_name_prefix[:40].replace(" ", "_").replace("\\", "_").replace("/", "_").replace('"', "_").replace("\n", "").replace("\r", "").replace("\t", "")
+    ns_label = (
+        body_name_prefix[:40]
+        .replace(" ", "_")
+        .replace("\\", "_")
+        .replace("/", "_")
+        .replace('"', "_")
+        .replace("\n", "")
+        .replace("\r", "")
+        .replace("\t", "")
+    )
     raw = _run(_build_pm_script(match, ns_label, proximity_multiplier))
     return _json(_extract_json(raw))
 
@@ -1347,7 +1325,16 @@ def convert_part_to_point_mass(part_name: str, proximity_multiplier: float = 3.0
         '_PART = "' + safe_part + '"\n'
         "matched = [b for b in all_bodies if str(b.Parent.Name) == _PART and not b.Suppressed]\n"
     )
-    ns_label = part_name[:40].replace(" ", "_").replace("\\", "_").replace("/", "_").replace('"', "_").replace("\n", "").replace("\r", "").replace("\t", "")
+    ns_label = (
+        part_name[:40]
+        .replace(" ", "_")
+        .replace("\\", "_")
+        .replace("/", "_")
+        .replace('"', "_")
+        .replace("\n", "")
+        .replace("\r", "")
+        .replace("\t", "")
+    )
     raw = _run(_build_pm_script(match, ns_label, proximity_multiplier))
     return _json(_extract_json(raw))
 
