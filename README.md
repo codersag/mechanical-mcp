@@ -87,43 +87,21 @@ Restart your client after editing the config.
 
 Mechanical exposes a gRPC server whose port you pass to `connect_to_mechanical`.
 
-**Option A — PyMechanical utility (recommended)**
+**Option A — PowerShell**
 
-From any Python terminal with `ansys-mechanical-core` installed:
-
-```python
-from ansys.mechanical.core import find_mechanical
-print(find_mechanical())
+```powershell
+Get-NetTCPConnection -State Listen | Where-Object {$_.LocalPort -ge 10000 -and $_.LocalPort -le 10010}
 ```
 
-This returns the path to the installed Mechanical executable. To find the gRPC port, check the Mechanical log file (Option B below).
+This lists all ports Mechanical is listening on.
 
-**Option B — Mechanical log file**
+**Option B — Just try the default**
 
-Mechanical writes the port to its log when it starts. The log is in your project's `_ProjectScratch` or `SYS` folder:
+The default port is **10000**. If only one Mechanical instance is open, just connect directly:
 
-```
-%APPDATA%\Ansys\v232\Mechanical\...
-```
+> "Connect to Mechanical on port 10000"
 
-Search the log for a line containing `gRPC` or `port`:
-
-```
-Mechanical gRPC server started on port 10000
-```
-
-**Option C — Workbench scripting console**
-
-In Workbench (`Tools → Scripting → Run Script`):
-
-```python
-import wbjn
-cmd = 'mechanical.GetServerPort()'
-result = wbjn.ExecuteCommand(Services, cmd)
-print(result)
-```
-
-The default port is **10000**. If you have multiple Mechanical systems open (e.g. Modal + Static Structural), each runs on a different port — run Option A to list them all.
+If you have multiple Mechanical systems open (e.g. Modal + Static Structural), each runs on a different port — use Option A to list them all.
 
 ## Usage
 
