@@ -25,7 +25,7 @@ def _json(data):
 
 def _check_connection():
     if _mechanical is None:
-        return "Not connected to Mechanical. Call connect_to_mechanical first."
+        return _json({"ok": False, "error": "Not connected to Mechanical. Call connect_to_mechanical first."})
     return None
 
 
@@ -256,24 +256,24 @@ def add_fixed_support(named_selection: str, analysis_index: int = 0) -> str:
     err = _check_connection()
     if err:
         return err
-    safe_ns = named_selection.replace('"', '\\"')
+    safe_ns = named_selection.replace("\\", "\\\\").replace('"', '\\"')
     script = (
-        "model = ExtAPI.DataModel.Project.Model\n"
-        "analysis = model.Analyses[" + str(analysis_index) + "]\n"
-        "ns = None\n"
-        "for item in model.GetChildren(DataModelObjectCategory.NamedSelection, True):\n"
-        '    if str(item.Name) == "' + safe_ns + '":\n'
-        "        ns = item\n"
-        "        break\n"
-        "if ns is None:\n"
-        '    print("Named selection not found: ' + safe_ns + '")\n'
+        "import json\n"
+        '_NS_NAME = "' + safe_ns + '"\n'
+        + _NS_LOOKUP
+        + "if _ns is None:\n"
+        '    print(json.dumps({"ok": False, "error": "Named selection not found"}))\n'
         "else:\n"
-        "    fixed = analysis.AddFixedSupport()\n"
-        "    fixed.Location = ns\n"
-        '    print("Fixed Support added to ' + safe_ns + '")\n'
+        "    _analysis = ExtAPI.DataModel.Project.Model.Analyses[" + str(analysis_index) + "]\n"
+        "    _bc = _analysis.AddFixedSupport()\n"
+        "    _bc.Location = _ns\n"
+        '    print(json.dumps({"ok": True, "message": "Fixed Support added"}))\n'
     )
     result = _run(script)
-    return _json({"ok": "not found" not in result.lower(), "message": result})
+    try:
+        return _json(json.loads(result))
+    except Exception:
+        return _json({"ok": True, "raw_output": result})
 
 
 @mcp.tool()
@@ -288,28 +288,28 @@ def add_force(
     err = _check_connection()
     if err:
         return err
-    safe_ns = named_selection.replace('"', '\\"')
+    safe_ns = named_selection.replace("\\", "\\\\").replace('"', '\\"')
     script = (
-        "model = ExtAPI.DataModel.Project.Model\n"
-        "analysis = model.Analyses[" + str(analysis_index) + "]\n"
-        "ns = None\n"
-        "for item in model.GetChildren(DataModelObjectCategory.NamedSelection, True):\n"
-        '    if str(item.Name) == "' + safe_ns + '":\n'
-        "        ns = item\n"
-        "        break\n"
-        "if ns is None:\n"
-        '    print("Named selection not found")\n'
+        "import json\n"
+        '_NS_NAME = "' + safe_ns + '"\n'
+        + _NS_LOOKUP
+        + "if _ns is None:\n"
+        '    print(json.dumps({"ok": False, "error": "Named selection not found"}))\n'
         "else:\n"
-        "    force = analysis.AddForce()\n"
-        "    force.Location = ns\n"
-        "    force.DefineBy = LoadDefineBy.Components\n"
-        "    force.XComponent.Output.SetDiscreteValue(0, Quantity(" + str(fx_n) + ', "N"))\n'
-        "    force.YComponent.Output.SetDiscreteValue(0, Quantity(" + str(fy_n) + ', "N"))\n'
-        "    force.ZComponent.Output.SetDiscreteValue(0, Quantity(" + str(fz_n) + ', "N"))\n'
-        '    print("Force added to ' + safe_ns + '")\n'
+        "    _analysis = ExtAPI.DataModel.Project.Model.Analyses[" + str(analysis_index) + "]\n"
+        "    _bc = _analysis.AddForce()\n"
+        "    _bc.Location = _ns\n"
+        "    _bc.DefineBy = LoadDefineBy.Components\n"
+        "    _bc.XComponent.Output.SetDiscreteValue(0, Quantity(" + str(fx_n) + ', "N"))\n'
+        "    _bc.YComponent.Output.SetDiscreteValue(0, Quantity(" + str(fy_n) + ', "N"))\n'
+        "    _bc.ZComponent.Output.SetDiscreteValue(0, Quantity(" + str(fz_n) + ', "N"))\n'
+        '    print(json.dumps({"ok": True, "message": "Force added"}))\n'
     )
     result = _run(script)
-    return _json({"ok": "not found" not in result.lower(), "message": result})
+    try:
+        return _json(json.loads(result))
+    except Exception:
+        return _json({"ok": True, "raw_output": result})
 
 
 @mcp.tool()
@@ -318,27 +318,27 @@ def add_pressure(named_selection: str, magnitude_pa: float, analysis_index: int 
     err = _check_connection()
     if err:
         return err
-    safe_ns = named_selection.replace('"', '\\"')
+    safe_ns = named_selection.replace("\\", "\\\\").replace('"', '\\"')
     script = (
-        "model = ExtAPI.DataModel.Project.Model\n"
-        "analysis = model.Analyses[" + str(analysis_index) + "]\n"
-        "ns = None\n"
-        "for item in model.GetChildren(DataModelObjectCategory.NamedSelection, True):\n"
-        '    if str(item.Name) == "' + safe_ns + '":\n'
-        "        ns = item\n"
-        "        break\n"
-        "if ns is None:\n"
-        '    print("Named selection not found")\n'
+        "import json\n"
+        '_NS_NAME = "' + safe_ns + '"\n'
+        + _NS_LOOKUP
+        + "if _ns is None:\n"
+        '    print(json.dumps({"ok": False, "error": "Named selection not found"}))\n'
         "else:\n"
-        "    pressure = analysis.AddPressure()\n"
-        "    pressure.Location = ns\n"
-        "    pressure.Magnitude.Output.SetDiscreteValue(0, Quantity("
+        "    _analysis = ExtAPI.DataModel.Project.Model.Analyses[" + str(analysis_index) + "]\n"
+        "    _bc = _analysis.AddPressure()\n"
+        "    _bc.Location = _ns\n"
+        "    _bc.Magnitude.Output.SetDiscreteValue(0, Quantity("
         + str(magnitude_pa)
         + ', "Pa"))\n'
-        '    print("Pressure added to ' + safe_ns + '")\n'
+        '    print(json.dumps({"ok": True, "message": "Pressure added"}))\n'
     )
     result = _run(script)
-    return _json({"ok": "not found" not in result.lower(), "message": result})
+    try:
+        return _json(json.loads(result))
+    except Exception:
+        return _json({"ok": True, "raw_output": result})
 
 
 @mcp.tool()
@@ -372,7 +372,8 @@ def solve_analysis(analysis_index: int = 0) -> str:
         'print("Solve complete. Status: " + str(analysis.Solution.Status))\n'
     )
     result = _run(script)
-    return _json({"ok": "Script error:" not in result, "message": result})
+    ok = "Script error:" not in result and "Failed" not in result
+    return _json({"ok": ok, "message": result})
 
 
 @mcp.tool()
@@ -452,47 +453,6 @@ def get_modal_frequencies(analysis_index: int = 0) -> str:
     except Exception:
         return _json({"ok": True, "raw_output": result})
 
-
-@mcp.tool()
-def get_stress_results(analysis_index: int = 0) -> str:
-    """Add an Equivalent (von Mises) Stress result to the solution and evaluate it.
-    Note: each call adds a new result object to the Mechanical tree. Args: analysis_index"""
-    err = _check_connection()
-    if err:
-        return err
-    script = (
-        "import json\n"
-        "solution = ExtAPI.DataModel.Project.Model.Analyses[" + str(analysis_index) + "].Solution\n"
-        "stress = solution.AddEquivalentStress()\n"
-        "solution.EvaluateAllResults()\n"
-        'print(json.dumps({"max_pa": str(stress.Maximum), "min_pa": str(stress.Minimum)}))\n'
-    )
-    result = _run(script)
-    try:
-        return _json({"ok": True, "stress": json.loads(result)})
-    except Exception:
-        return _json({"ok": True, "raw_output": result})
-
-
-@mcp.tool()
-def get_deformation_results(analysis_index: int = 0) -> str:
-    """Add a Total Deformation result to the solution and evaluate it.
-    Note: each call adds a new result object to the Mechanical tree. Args: analysis_index"""
-    err = _check_connection()
-    if err:
-        return err
-    script = (
-        "import json\n"
-        "solution = ExtAPI.DataModel.Project.Model.Analyses[" + str(analysis_index) + "].Solution\n"
-        "td = solution.AddTotalDeformation()\n"
-        "solution.EvaluateAllResults()\n"
-        'print(json.dumps({"max_m": str(td.Maximum), "min_m": str(td.Minimum)}))\n'
-    )
-    result = _run(script)
-    try:
-        return _json({"ok": True, "deformation": json.loads(result)})
-    except Exception:
-        return _json({"ok": True, "raw_output": result})
 
 
 @mcp.tool()
@@ -782,9 +742,7 @@ def add_frictionless_support(named_selection: str, analysis_index: int = 0) -> s
         + str(analysis_index)
         + "].AddFrictionlessSupport()\n"
         "    _bc.Location = _ns\n"
-        '    print(json.dumps({"ok": True, "message": "Frictionless Support added to '
-        + named_selection
-        + '"}))\n'
+        '    print(json.dumps({"ok": True, "message": "Frictionless Support added"}))\n'
     )
     try:
         return _json(json.loads(result))
@@ -834,9 +792,7 @@ def add_displacement(
         + comp_line("X", x_mm)
         + comp_line("Y", y_mm)
         + comp_line("Z", z_mm)
-        + '    print(json.dumps({"ok": True, "message": "Displacement added to '
-        + named_selection
-        + '"}))\n'
+        + '    print(json.dumps({"ok": True, "message": "Displacement added"}))\n'
     )
     try:
         return _json(json.loads(result))
@@ -902,9 +858,7 @@ def add_remote_displacement(
         + rot_line("X", rot_x_deg)
         + rot_line("Y", rot_y_deg)
         + rot_line("Z", rot_z_deg)
-        + '    print(json.dumps({"ok": True, "message": "Remote Displacement added to '
-        + named_selection
-        + '"}))\n'
+        + '    print(json.dumps({"ok": True, "message": "Remote Displacement added"}))\n'
     )
     try:
         return _json(json.loads(result))
@@ -976,9 +930,7 @@ def add_remote_force(
         "    _bc.XComponent.Output.SetDiscreteValue(0, Quantity(" + str(fx_n) + ', "N"))\n'
         "    _bc.YComponent.Output.SetDiscreteValue(0, Quantity(" + str(fy_n) + ', "N"))\n'
         "    _bc.ZComponent.Output.SetDiscreteValue(0, Quantity(" + str(fz_n) + ', "N"))\n'
-        '    print(json.dumps({"ok": True, "message": "Remote Force added to '
-        + named_selection
-        + '"}))\n'
+        '    print(json.dumps({"ok": True, "message": "Remote Force added"}))\n'
     )
     try:
         return _json(json.loads(result))
@@ -1015,9 +967,7 @@ def add_moment(
         "    _bc.XComponent.Output.SetDiscreteValue(0, Quantity(" + str(mx_nm) + ', "N m"))\n'
         "    _bc.YComponent.Output.SetDiscreteValue(0, Quantity(" + str(my_nm) + ', "N m"))\n'
         "    _bc.ZComponent.Output.SetDiscreteValue(0, Quantity(" + str(mz_nm) + ', "N m"))\n'
-        '    print(json.dumps({"ok": True, "message": "Moment added to '
-        + named_selection
-        + '"}))\n'
+        '    print(json.dumps({"ok": True, "message": "Moment added"}))\n'
     )
     try:
         return _json(json.loads(result))
@@ -1250,7 +1200,6 @@ def _build_pm_script(match_lines: str, ns_label: str, prox_mult: float = 3.0) ->
         "    else:\n"
         '        _pm_name = "%d bodies, %.5g %s" % (_n_bodies, round(_PM_mass.ConvertUnit(_mass_unit).Value, 5), _mass_unit)\n'
         "        _pinball_m = (3.0 * _PM_vol / (4.0 * math.pi)) ** (1.0 / 3.0)\n"
-        '        _pinball_lu = Quantity("%.10g [m]" % _pinball_m).ConvertUnit(_len_unit).Value\n'
         "        _pm.Name = _pm_name\n"
         "        _pm.Mass = _PM_mass\n"
         "        _pm.InternalObject.LocationX = _PM_x.ConvertUnit(_len_unit).Value\n"
@@ -1361,8 +1310,8 @@ def _extract_json(raw: str):
 @mcp.tool()
 def convert_prefix_to_point_mass(body_name_prefix: str, proximity_multiplier: float = 3.0) -> str:
     """Convert all unsuppressed bodies whose name starts with body_name_prefix to a
-    combined Point Mass (SpaceTools ACT), then create a Named Selection of all
-    coplanar attachment faces on the nearest structural surface.
+    combined Point Mass, then create a Named Selection of all coplanar attachment
+    faces on the nearest structural surface. No ACT extensions required.
     Args: body_name_prefix, proximity_multiplier (default 3.0)"""
     err = _check_connection()
     if err:
@@ -1373,16 +1322,16 @@ def convert_prefix_to_point_mass(body_name_prefix: str, proximity_multiplier: fl
         '_PREFIX = binascii.unhexlify("' + prefix_hex + '").decode("utf-8")\n'
         "matched = [b for b in all_bodies if b.Name.startswith(_PREFIX) and not b.Suppressed]\n"
     )
-    ns_label = body_name_prefix[:40].replace(" ", "_").replace("\\", "_").replace("/", "_")
+    ns_label = body_name_prefix[:40].replace(" ", "_").replace("\\", "_").replace("/", "_").replace('"', "_")
     raw = _run(_build_pm_script(match, ns_label, proximity_multiplier))
     return _json(_extract_json(raw))
 
 
 @mcp.tool()
 def convert_part_to_point_mass(part_name: str, proximity_multiplier: float = 3.0) -> str:
-    """Convert all unsuppressed bodies inside a named Part to a combined Point Mass
-    (SpaceTools ACT), then create a Named Selection of all coplanar attachment faces
-    on the nearest structural surface.
+    """Convert all unsuppressed bodies inside a named Part to a combined Point Mass,
+    then create a Named Selection of all coplanar attachment faces on the nearest
+    structural surface. No ACT extensions required.
     Args: part_name, proximity_multiplier (default 3.0)"""
     err = _check_connection()
     if err:
