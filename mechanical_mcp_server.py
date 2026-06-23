@@ -674,7 +674,7 @@ def suppress_bodies(name_prefix: str = "", suppress: bool = True) -> str:
     action = "True" if suppress else "False"
     result = _run(
         "import json\n"
-        '_PREFIX = "' + name_prefix.replace('"', '\\"') + '"\n'
+        '_PREFIX = "' + name_prefix.replace("\\", "\\\\").replace('"', '\\"') + '"\n'
         "_changed = []\n"
         "for _b in ExtAPI.DataModel.Project.Model.Geometry.GetChildren(DataModelObjectCategory.Body, True):\n"
         '    if _PREFIX == "" or str(_b.Name).startswith(_PREFIX):\n'
@@ -733,7 +733,7 @@ def add_frictionless_support(named_selection: str, analysis_index: int = 0) -> s
     result = _run(
         "import json\n"
         '_NS_NAME = "'
-        + named_selection.replace('"', '\\"')
+        + named_selection.replace("\\", "\\\\").replace('"', '\\"')
         + '"\n'
         + _NS_LOOKUP
         + "if _ns is None:\n"
@@ -779,7 +779,7 @@ def add_displacement(
     result = _run(
         "import json\n"
         '_NS_NAME = "'
-        + named_selection.replace('"', '\\"')
+        + named_selection.replace("\\", "\\\\").replace('"', '\\"')
         + '"\n'
         + _NS_LOOKUP
         + "if _ns is None:\n"
@@ -843,7 +843,7 @@ def add_remote_displacement(
     result = _run(
         "import json\n"
         '_NS_NAME = "'
-        + named_selection.replace('"', '\\"')
+        + named_selection.replace("\\", "\\\\").replace('"', '\\"')
         + '"\n'
         + _NS_LOOKUP
         + "if _ns is None:\n"
@@ -917,7 +917,7 @@ def add_remote_force(
     result = _run(
         "import json\n"
         '_NS_NAME = "'
-        + named_selection.replace('"', '\\"')
+        + named_selection.replace("\\", "\\\\").replace('"', '\\"')
         + '"\n'
         + _NS_LOOKUP
         + "if _ns is None:\n"
@@ -954,7 +954,7 @@ def add_moment(
     result = _run(
         "import json\n"
         '_NS_NAME = "'
-        + named_selection.replace('"', '\\"')
+        + named_selection.replace("\\", "\\\\").replace('"', '\\"')
         + '"\n'
         + _NS_LOOKUP
         + "if _ns is None:\n"
@@ -1104,7 +1104,7 @@ def add_reaction_force(named_selection: str, analysis_index: int = 0) -> str:
     result = _run(
         "import json\n"
         '_NS_NAME = "'
-        + named_selection.replace('"', '\\"')
+        + named_selection.replace("\\", "\\\\").replace('"', '\\"')
         + '"\n'
         + _NS_LOOKUP
         + "if _ns is None:\n"
