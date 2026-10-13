@@ -1,22 +1,34 @@
 #!/usr/bin/env python3
-"""Mechanical MCP Server - Connects Claude to ANSYS Mechanical via gRPC."""
+"""Mechanical MCP Server - Connects AI clients to ANSYS Mechanical via gRPC."""
 
 from __future__ import annotations
+
 import json
 import os
+import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
-from mcp.server.fastmcp import FastMCP
+
+try:
+    from mcp.server.fastmcp import FastMCP
+except ModuleNotFoundError as _import_error:
+    raise SystemExit(
+        "mechanical-mcp could not import mcp.server.fastmcp (%s).\n"
+        "This server targets the mcp 1.x API; mcp 2.x renamed FastMCP to MCPServer.\n"
+        'Install a supported version with:  pip install "mcp[cli]>=1.0,<2"' % _import_error
+    ) from _import_error
 
 _mechanical = None
 _port = 0
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 mcp = FastMCP("ansys-mechanical-mcp")
 
-# Use forward slashes so embedded paths in IronPython strings are safe on Windows
-_OUTFILE = (Path(__file__).parent / "mech_out.txt").as_posix()
-_SCRIPTFILE = (Path(__file__).parent / "mech_script.py").as_posix()
+# The port survives a server restart here. A solve that outruns the client's
+# call timeout can take the whole server process with it, and the Mechanical
+# session it was talking to is still listening on the same port afterwards.
+_STATE_FILE = Path(tempfile.gettempdir()) / "mechanical_mcp_state.json"
 
 
 def _json(data):
@@ -24,23 +36,123 @@ def _json(data):
 
 
 def _esc(s: str) -> str:
-    """Escape a user string for safe embedding in an IronPython double-quoted string literal."""
-    return s.replace("\\", "\\\\").replace('"', '\\"')
+    """Escape a user string for embedding in an IronPython double-quoted literal.
+
+    Newlines matter as much as quotes: an unescaped one closes the literal and
+    everything after it is parsed as code.
+    """
+    return (
+        s.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t")
+    )
+
+
+# ---------------------------------------------------------------------------
+# Connection state
+# ---------------------------------------------------------------------------
+
+
+def _remember_port(port: int) -> None:
+    try:
+        _STATE_FILE.write_text(json.dumps({"port": port}), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _forget_port() -> None:
+    try:
+        _STATE_FILE.unlink()
+    except Exception:
+        pass
+
+
+def _last_port() -> int:
+    try:
+        return int(json.loads(_STATE_FILE.read_text(encoding="utf-8")).get("port", 0))
+    except Exception:
+        return 0
+
+
+def _close_channel() -> None:
+    """Drop our side of the connection, leaving Mechanical running.
+
+    Mechanical.exit() sends a ShutdownRequest -- it closes the user's session
+    and any unsaved work with it. A client disconnect must not do that, so
+    close the gRPC channel instead and let the session carry on.
+    """
+    global _mechanical, _port
+    if _mechanical is None:
+        return
+    channel = getattr(_mechanical, "_channel", None)
+    if channel is not None:
+        try:
+            channel.close()
+        except Exception:
+            pass
+    _mechanical = None
+    _port = 0
+
+
+def _connect(port: int) -> None:
+    """Open a connection and record the port. Raises on failure."""
+    global _mechanical, _port
+    import ansys.mechanical.core as mech
+
+    _close_channel()
+    _mechanical = mech.connect_to_mechanical(port=port)
+    _port = port
+    _remember_port(port)
 
 
 def _check_connection():
-    if _mechanical is None:
-        return _json(
-            {"ok": False, "error": "Not connected to Mechanical. Call connect_to_mechanical first."}
-        )
-    return None
+    """Return an error payload if unusable, else None.
+
+    After a server restart _mechanical is None while the Mechanical session is
+    usually still listening on the last port, so try that once before telling
+    the caller it is not connected.
+    """
+    if _mechanical is not None:
+        return None
+    port = _last_port()
+    if port:
+        try:
+            _connect(port)
+            return None
+        except Exception:
+            _forget_port()
+    return _json(
+        {"ok": False, "error": "Not connected to Mechanical. Call connect_to_mechanical first."}
+    )
 
 
-def _run(script):
+# ---------------------------------------------------------------------------
+# Script execution
+# ---------------------------------------------------------------------------
+
+
+def _temp_paths():
+    """Unique script/output paths for a single _run call.
+
+    These used to live next to the module. A non-editable install puts that in
+    site-packages, which is read-only on a managed machine, and two clients
+    sharing one path would overwrite each other's script mid-run.
+    """
+    handle, script = tempfile.mkstemp(prefix="mech_script_", suffix=".py")
+    os.close(handle)
+    handle, out = tempfile.mkstemp(prefix="mech_out_", suffix=".txt")
+    os.close(handle)
+    # Forward slashes keep the embedded paths safe inside IronPython literals.
+    return Path(script).as_posix(), Path(out).as_posix()
+
+
+def _run(script, _retry=True):
     """Run script in Mechanical, capturing print() output via temp files."""
+    script_file, out_file = _temp_paths()
     try:
-        # Write the user script to a file so we avoid string-escaping issues
-        with open(_SCRIPTFILE, "w", encoding="utf-8") as fh:
+        with open(script_file, "w", encoding="utf-8") as fh:
             fh.write(script)
 
         # Wrapper: redirect stdout, exec the script file, write output to disk.
@@ -59,90 +171,174 @@ def _run(script):
             "try:\n"
             "    import io as _io\n"
             '    with _io.open(r"'
-            + _SCRIPTFILE.replace('"', '\\"')
+            + script_file.replace('"', '\\"')
             + "\", encoding='utf-8') as _sf: _code=_sf.read()\n"
             "    exec(_code, globals())\n"
             "except Exception as _e:\n"
             "    _cap.d.append('Script error: ' + str(_e) + '\\n')\n"
             "finally:\n"
             "    _sys.stdout=_orig\n"
-            '    with open(r"' + _OUTFILE.replace('"', '\\"') + "\", 'w') as _f:\n"
+            '    with open(r"' + out_file.replace('"', '\\"') + "\", 'w') as _f:\n"
             "        _f.write(''.join(_cap.d))\n"
         )
 
-        _mechanical.run_python_script(wrapper)
+        try:
+            _mechanical.run_python_script(wrapper)
+        except Exception as e:
+            # A dead channel looks like a hard failure, but the session is
+            # usually still up; reconnect once to the remembered port.
+            port = _last_port()
+            if _retry and port:
+                try:
+                    _connect(port)
+                except Exception:
+                    return "Error: " + str(e)
+                return _run(script, _retry=False)
+            return "Error: " + str(e)
 
         try:
-            with open(_OUTFILE, "r", encoding="utf-8") as fh:
+            with open(out_file, "r", encoding="utf-8") as fh:
                 result = fh.read().strip()
         except Exception:
             result = ""
 
-        for path in (_OUTFILE, _SCRIPTFILE):
+        return result if result else "(done)"
+    except Exception as e:
+        return "Error: " + str(e)
+    finally:
+        for path in (out_file, script_file):
             try:
                 os.remove(path)
             except Exception:
                 pass
 
-        return result if result else "(done)"
-    except Exception as e:
-        return "Error: " + str(e)
+
+# ---------------------------------------------------------------------------
+# Result handling
+# ---------------------------------------------------------------------------
+
+_SCRIPT_ERROR = "Script error:"
+_RUN_ERROR = "Error: "
 
 
-@mcp.tool()
-def connect_to_mechanical(port: int = 10000) -> str:
-    """Connect to ANSYS Mechanical via gRPC. Args: port: gRPC port"""
-    global _mechanical, _port
-    try:
-        import ansys.mechanical.core as mech
+def _script_error(raw: str):
+    """Return the failure text in raw _run output, or None if it succeeded."""
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(_SCRIPT_ERROR):
+            return stripped[len(_SCRIPT_ERROR) :].strip()
+    if raw.startswith(_RUN_ERROR):
+        return raw[len(_RUN_ERROR) :].strip()
+    return None
 
-        if _mechanical is not None:
+
+def _extract_json(raw: str):
+    """Pull the first JSON object out of raw output, past any ACT log lines."""
+    for line in raw.splitlines():
+        line = line.strip()
+        if line.startswith("{"):
             try:
-                _mechanical.exit()
+                return json.loads(line)
             except Exception:
                 pass
-            _mechanical = None
-        _mechanical = mech.connect_to_mechanical(port=port)
-        _port = port
-        info = _run(
-            "model = ExtAPI.DataModel.Project.Model\n"
-            'print("Connected! Analyses: " + str(len(model.Analyses)))\n'
-            "for i, a in enumerate(model.Analyses):\n"
-            '    print("  [" + str(i) + "] " + str(a.Name) + " (" + str(a.AnalysisType) + ")")\n'
-        )
-        return _json({"ok": True, "port": port, "info": info})
-    except ImportError:
-        return _json({"ok": False, "error": "ansys-mechanical-core not installed."})
-    except Exception as e:
-        return _json({"ok": False, "error": str(e)})
+    return None
+
+
+def _result(raw: str, key: str = ""):
+    """Turn raw IronPython output into a tool response.
+
+    A script that raised used to come back as ok:true with the traceback in
+    raw_output, so a client read the failure as a success. Anything that
+    errored now returns ok:false carrying the actual message.
+    """
+    err = _script_error(raw)
+    if err is not None:
+        return _json({"ok": False, "error": err})
+    data = _extract_json(raw)
+    if data is None:
+        return _json({"ok": True, "message": raw})
+    if key:
+        return _json({"ok": True, key: data})
+    if "ok" in data:
+        return _json(data)
+    return _json({"ok": True, **data})
+
+
+# ---------------------------------------------------------------------------
+# Connection tools
+# ---------------------------------------------------------------------------
 
 
 @mcp.tool()
-def disconnect_from_mechanical() -> str:
-    """Disconnect from Mechanical."""
-    global _mechanical, _port
-    err = _check_connection()
-    if err:
-        return err
+def connect_to_mechanical(port: int) -> str:
+    """Connect to ANSYS Mechanical via gRPC.
+    Args: port: gRPC port reported by Workbench (changes every session)"""
     try:
-        _mechanical.exit()
-    except Exception:
-        pass
-    _mechanical = None
-    _port = 0
-    return _json({"ok": True, "message": "Disconnected."})
+        import ansys.mechanical.core  # noqa: F401
+    except ImportError as e:
+        return _json(
+            {
+                "ok": False,
+                "error": "Could not import ansys-mechanical-core: %s" % e,
+                "hint": (
+                    "Install it with 'pip install ansys-mechanical-core'. If the package "
+                    "is installed and the message above mentions a DLL load failure or an "
+                    "Application Control policy, reinstalling will not help -- see the "
+                    "Troubleshooting section of the README."
+                ),
+            }
+        )
+    try:
+        _connect(port)
+    except Exception as e:
+        return _json({"ok": False, "error": str(e)})
+    info = _run(
+        "model = ExtAPI.DataModel.Project.Model\n"
+        'print("Connected! Analyses: " + str(len(model.Analyses)))\n'
+        "for i, a in enumerate(model.Analyses):\n"
+        '    print("  [" + str(i) + "] " + str(a.Name) + " (" + str(a.AnalysisType) + ")")\n'
+    )
+    err = _script_error(info)
+    if err is not None:
+        return _json({"ok": False, "error": err})
+    return _json({"ok": True, "port": port, "info": info})
+
+
+@mcp.tool()
+def disconnect_from_mechanical(shutdown: bool = False) -> str:
+    """Disconnect from Mechanical, leaving the session running.
+    Args: shutdown (True also closes Mechanical itself - unsaved work is lost)"""
+    global _mechanical
+    if _mechanical is None:
+        _forget_port()
+        return _json({"ok": True, "message": "Not connected."})
+    if shutdown:
+        try:
+            _mechanical.exit(force=True)
+        except Exception as e:
+            return _json({"ok": False, "error": "Shutdown failed: " + str(e)})
+        _mechanical = None
+        _forget_port()
+        return _json({"ok": True, "message": "Mechanical session shut down."})
+    _close_channel()
+    _forget_port()
+    return _json({"ok": True, "message": "Disconnected. Mechanical is still running."})
 
 
 @mcp.tool()
 def check_mechanical_connection() -> str:
     """Check connection status."""
-    if _mechanical is None:
+    if _mechanical is None and not _last_port():
+        return _json({"connected": False})
+    if _check_connection():
         return _json({"connected": False})
     info = _run(
         "model = ExtAPI.DataModel.Project.Model\n"
         "for i, a in enumerate(model.Analyses):\n"
         '    print("[" + str(i) + "] " + str(a.Name) + " (" + str(a.AnalysisType) + ")")\n'
     )
+    if _script_error(info) is not None:
+        return _json({"connected": False})
     return _json({"connected": True, "port": _port, "info": info})
 
 
@@ -164,10 +360,7 @@ def get_model_info() -> str:
         'info["analyses"] = [{"name": str(a.Name), "type": str(a.AnalysisType)} for a in model.Analyses]\n'
         "print(json.dumps(info))\n"
     )
-    try:
-        return _json({"ok": True, "model_info": json.loads(result)})
-    except Exception:
-        return _json({"ok": True, "raw_output": result})
+    return _result(result, "model_info")
 
 
 @mcp.tool()
@@ -182,10 +375,7 @@ def list_materials() -> str:
         "materials = [str(m.Name) for m in model.Materials.Children]\n"
         'print(json.dumps({"materials": materials}))\n'
     )
-    try:
-        return _json({"ok": True, **json.loads(result)})
-    except Exception:
-        return _json({"ok": True, "raw_output": result})
+    return _result(result)
 
 
 @mcp.tool()
@@ -197,6 +387,7 @@ def assign_material(body_name: str, material_name: str) -> str:
     safe_body = _esc(body_name)
     safe_mat = _esc(material_name)
     script = (
+        "import json\n"
         "model = ExtAPI.DataModel.Project.Model\n"
         "assigned = False\n"
         "for body in model.Geometry.GetChildren(DataModelObjectCategory.Body, True):\n"
@@ -204,10 +395,16 @@ def assign_material(body_name: str, material_name: str) -> str:
         '        body.Material = "' + safe_mat + '"\n'
         "        assigned = True\n"
         "        break\n"
-        'print("Assigned" if assigned else "Body not found: ' + safe_body + '")\n'
+        "if assigned:\n"
+        '    print(json.dumps({"ok": True, "body": "'
+        + safe_body
+        + '", "material": "'
+        + safe_mat
+        + '"}))\n'
+        "else:\n"
+        '    print(json.dumps({"ok": False, "error": "Body not found: ' + safe_body + '"}))\n'
     )
-    result = _run(script)
-    return _json({"ok": "not found" not in result.lower(), "message": result})
+    return _result(_run(script))
 
 
 @mcp.tool()
@@ -222,7 +419,7 @@ def set_mesh_element_size(element_size_mm: float) -> str:
         "model.Mesh.ElementSize = Quantity(" + str(size_m) + ', "m")\n'
         'print("Element size set to ' + str(element_size_mm) + 'mm")\n'
     )
-    return _json({"ok": True, "message": _run(script)})
+    return _result(_run(script))
 
 
 @mcp.tool()
@@ -232,10 +429,17 @@ def generate_mesh() -> str:
     if err:
         return err
     result = _run(
-        "ExtAPI.DataModel.Project.Model.Mesh.GenerateMesh()\n"
-        'print("Mesh generated successfully.")\n'
+        "import json\n"
+        "_mesh = ExtAPI.DataModel.Project.Model.Mesh\n"
+        "_mesh.GenerateMesh()\n"
+        "try:\n"
+        '    _stats = {"nodes": int(_mesh.Nodes), "elements": int(_mesh.Elements)}\n'
+        "except:\n"
+        "    _stats = {}\n"
+        '_stats["ok"] = True\n'
+        "print(json.dumps(_stats))\n"
     )
-    return _json({"ok": True, "message": result})
+    return _result(result)
 
 
 @mcp.tool()
@@ -253,10 +457,7 @@ def get_mesh_statistics() -> str:
         '    stats = {"nodes": "N/A", "elements": "N/A"}\n'
         "print(json.dumps(stats))\n"
     )
-    try:
-        return _json({"ok": True, "mesh_statistics": json.loads(result)})
-    except Exception:
-        return _json({"ok": True, "raw_output": result})
+    return _result(result, "mesh_statistics")
 
 
 @mcp.tool()
@@ -277,10 +478,7 @@ def add_fixed_support(named_selection: str, analysis_index: int = 0) -> str:
         '    print(json.dumps({"ok": True, "message": "Fixed Support added"}))\n'
     )
     result = _run(script)
-    try:
-        return _json(json.loads(result))
-    except Exception:
-        return _json({"ok": True, "raw_output": result})
+    return _result(result)
 
 
 @mcp.tool()
@@ -311,10 +509,7 @@ def add_force(
         '    print(json.dumps({"ok": True, "message": "Force added"}))\n'
     )
     result = _run(script)
-    try:
-        return _json(json.loads(result))
-    except Exception:
-        return _json({"ok": True, "raw_output": result})
+    return _result(result)
 
 
 @mcp.tool()
@@ -336,10 +531,7 @@ def add_pressure(named_selection: str, magnitude_pa: float, analysis_index: int 
         '    print(json.dumps({"ok": True, "message": "Pressure added"}))\n'
     )
     result = _run(script)
-    try:
-        return _json(json.loads(result))
-    except Exception:
-        return _json({"ok": True, "raw_output": result})
+    return _result(result)
 
 
 @mcp.tool()
@@ -351,30 +543,54 @@ def list_boundary_conditions(analysis_index: int = 0) -> str:
     script = (
         "import json\n"
         "analysis = ExtAPI.DataModel.Project.Model.Analyses[" + str(analysis_index) + "]\n"
-        'bcs = [{"name": str(c.Name), "type": str(c.GetType().Name)} for c in analysis.Children]\n'
+        '_SKIP = ("Solution", "AnalysisSettings")\n'
+        'bcs = [{"name": str(c.Name), "type": str(c.GetType().Name)}\n'
+        "       for c in analysis.Children if str(c.GetType().Name) not in _SKIP]\n"
         'print(json.dumps({"boundary_conditions": bcs}))\n'
     )
     result = _run(script)
-    try:
-        return _json({"ok": True, **json.loads(result)})
-    except Exception:
-        return _json({"ok": True, "raw_output": result})
+    return _result(result)
+
+
+# Solver messages live in ExtAPI.Application.Messages and are where Mechanical
+# explains itself -- the error naming the fix, and the accuracy warning that
+# decides whether the numbers can be trusted. Both used to be dropped.
+_MESSAGES = (
+    "_msgs = []\n"
+    "try:\n"
+    "    for _m in ExtAPI.Application.Messages:\n"
+    '        _msgs.append({"severity": str(_m.Severity), "text": str(_m.DisplayString)})\n'
+    "except:\n"
+    "    pass\n"
+)
 
 
 @mcp.tool()
-def solve_analysis(analysis_index: int = 0) -> str:
-    """Solve the analysis. Progress visible in GUI. Args: analysis_index"""
+def solve_analysis(analysis_index: int = 0, wait: bool = True) -> str:
+    """Solve the analysis. Progress visible in GUI. Returns solver messages.
+    Args: analysis_index, wait (False submits and returns at once - then poll
+    get_solve_status; use it for solves longer than the client call timeout)"""
     err = _check_connection()
     if err:
         return err
     script = (
+        "import json\n"
         "analysis = ExtAPI.DataModel.Project.Model.Analyses[" + str(analysis_index) + "]\n"
-        "analysis.Solution.Solve(True)\n"
-        'print("Solve complete. Status: " + str(analysis.Solution.Status))\n'
+        # Clear first so the messages reported belong to this solve.
+        "try:\n"
+        "    ExtAPI.Application.Messages.Clear()\n"
+        "except:\n"
+        "    pass\n"
+        "analysis.Solution.Solve("
+        + ("True" if wait else "False")
+        + ")\n"
+        + _MESSAGES
+        + "_status = str(analysis.Solution.Status)\n"
+        + ('_ok = _status == "Done"\n' if wait else "_ok = True\n")
+        + 'print(json.dumps({"ok": _ok, "status": _status, "messages": _msgs, '
+        '"waited": ' + ("True" if wait else "False") + "}))\n"
     )
-    result = _run(script)
-    ok = "Script error:" not in result and "failed" not in result.lower()
-    return _json({"ok": ok, "message": result})
+    return _result(_run(script))
 
 
 @mcp.tool()
@@ -385,14 +601,15 @@ def get_solve_status(analysis_index: int = 0) -> str:
         return err
     script = (
         "import json\n"
-        "analysis = ExtAPI.DataModel.Project.Model.Analyses[" + str(analysis_index) + "]\n"
-        'print(json.dumps({"status": str(analysis.Solution.Status), "name": str(analysis.Name), "type": str(analysis.AnalysisType)}))\n'
+        "analysis = ExtAPI.DataModel.Project.Model.Analyses["
+        + str(analysis_index)
+        + "]\n"
+        + _MESSAGES
+        + 'print(json.dumps({"status": str(analysis.Solution.Status), "name": '
+        'str(analysis.Name), "type": str(analysis.AnalysisType), "messages": _msgs}))\n'
     )
     result = _run(script)
-    try:
-        return _json({"ok": True, **json.loads(result)})
-    except Exception:
-        return _json({"ok": True, "raw_output": result})
+    return _result(result)
 
 
 @mcp.tool()
@@ -402,15 +619,15 @@ def add_total_deformation_all_modes(num_modes: int = 6, analysis_index: int = 0)
     if err:
         return err
     script = (
+        "import json\n"
         "solution = ExtAPI.DataModel.Project.Model.Analyses[" + str(analysis_index) + "].Solution\n"
         "for i in range(1, " + str(num_modes + 1) + "):\n"
         "    td = solution.AddTotalDeformation()\n"
         "    td.Mode = i\n"
         "solution.EvaluateAllResults()\n"
-        'print("Total Deformation added for ' + str(num_modes) + ' modes.")\n'
+        'print(json.dumps({"ok": True, "modes_added": ' + str(num_modes) + "}))\n"
     )
-    result = _run(script)
-    return _json({"ok": True, "message": result})
+    return _result(_run(script))
 
 
 @mcp.tool()
@@ -419,40 +636,72 @@ def add_total_deformation(mode: int = 0, analysis_index: int = 0) -> str:
     err = _check_connection()
     if err:
         return err
-    mode_line = ("    td.Mode = " + str(mode) + "\n") if mode > 0 else ""
+    # No leading indent: this line is spliced in at the top level of the
+    # generated script, and an indented one made every mode > 0 call die
+    # with IndentationError -- reported as ok:true.
+    mode_line = ("td.Mode = " + str(mode) + "\n") if mode > 0 else ""
     script = (
+        "import json\n"
         "solution = ExtAPI.DataModel.Project.Model.Analyses[" + str(analysis_index) + "].Solution\n"
         "td = solution.AddTotalDeformation()\n" + mode_line + "solution.EvaluateAllResults()\n"
-        'print("Total Deformation added. Max: " + str(td.Maximum))\n'
+        'print(json.dumps({"ok": True, "mode": ' + str(mode) + ', "max": str(td.Maximum)}))\n'
     )
-    result = _run(script)
-    return _json({"ok": True, "message": result})
+    return _result(_run(script))
 
 
 @mcp.tool()
-def get_modal_frequencies(analysis_index: int = 0) -> str:
-    """Get natural frequencies from modal analysis. Args: analysis_index"""
+def get_modal_frequencies(analysis_index: int = 0, add_results_if_missing: bool = True) -> str:
+    """Get natural frequencies from a modal analysis.
+
+    Frequencies are only readable through result objects. When none exist the
+    tool used to return an empty list with ok:true, which reads as "this model
+    has no modes" rather than "nobody asked for the results yet".
+    Args: analysis_index, add_results_if_missing (add Total Deformation
+    results and evaluate them when the solution has none)"""
     err = _check_connection()
     if err:
         return err
     script = (
         "import json\n"
-        "solution = ExtAPI.DataModel.Project.Model.Analyses[" + str(analysis_index) + "].Solution\n"
-        "frequencies = []\n"
-        "for r in solution.Children:\n"
-        '    if "TotalDeformation" in str(r.GetType().Name):\n'
+        "analysis = ExtAPI.DataModel.Project.Model.Analyses[" + str(analysis_index) + "]\n"
+        "solution = analysis.Solution\n"
+        "def _collect():\n"
+        "    _out = []\n"
+        "    for _r in solution.Children:\n"
+        '        if "TotalDeformation" not in str(_r.GetType().Name):\n'
+        "            continue\n"
         "        try:\n"
-        '            frequencies.append({"mode": int(r.Mode), "frequency_hz": float(str(r.ReportedFrequency).split()[0])})\n'
+        '            _out.append({"mode": int(_r.Mode), "frequency_hz": '
+        "float(str(_r.ReportedFrequency).split()[0])})\n"
         "        except:\n"
         "            pass\n"
+        "    return _out\n"
+        "frequencies = _collect()\n"
+        "created = False\n"
+        + ("if not frequencies:\n" if add_results_if_missing else "if False:\n")
+        + "    try:\n"
+        "        _n = int(analysis.AnalysisSettings.MaximumModesToFind)\n"
+        "    except:\n"
+        "        _n = 6\n"
+        "    try:\n"
+        "        for _i in range(1, _n + 1):\n"
+        "            _td = solution.AddTotalDeformation()\n"
+        "            _td.Mode = _i\n"
+        "        solution.EvaluateAllResults()\n"
+        "        frequencies = _collect()\n"
+        "        created = True\n"
+        "    except:\n"
+        "        pass\n"
         'frequencies.sort(key=lambda x: x["mode"])\n'
-        'print(json.dumps({"frequencies": frequencies}))\n'
+        "if frequencies:\n"
+        '    print(json.dumps({"ok": True, "frequencies": frequencies, '
+        '"results_created": created}))\n'
+        "else:\n"
+        '    print(json.dumps({"ok": False, "error": "No modal frequencies could be read. '
+        "The analysis has no Total Deformation results and none could be added - check that "
+        'it is a modal analysis and that it solved.", "solution_status": str(solution.Status)}))\n'
     )
-    result = _run(script)
-    try:
-        return _json({"ok": True, **json.loads(result)})
-    except Exception:
-        return _json({"ok": True, "raw_output": result})
+    return _result(_run(script))
 
 
 @mcp.tool()
@@ -600,7 +849,11 @@ def run_mechanical_script(script: str) -> str:
     err = _check_connection()
     if err:
         return err
-    return _json({"ok": True, "output": _run(script)})
+    raw = _run(script)
+    err = _script_error(raw)
+    if err is not None:
+        return _json({"ok": False, "error": err})
+    return _json({"ok": True, "output": raw})
 
 
 # ---------------------------------------------------------------------------
@@ -635,10 +888,7 @@ def list_named_selections() -> str:
         '    out.append({"name": str(ns.Name), "entity_count": cnt})\n'
         'print(json.dumps({"named_selections": out}))\n'
     )
-    try:
-        return _json({"ok": True, **json.loads(result)})
-    except Exception:
-        return _json({"ok": True, "raw_output": result})
+    return _result(result)
 
 
 @mcp.tool()
@@ -656,10 +906,7 @@ def delete_named_selection(name: str) -> str:
         "    _ns.Delete()\n"
         '    print(json.dumps({"ok": True, "deleted": "' + safe_name + '"}))\n'
     )
-    try:
-        return _json(json.loads(result))
-    except Exception:
-        return _json({"ok": True, "raw_output": result})
+    return _result(result)
 
 
 # ---------------------------------------------------------------------------
@@ -685,10 +932,7 @@ def suppress_bodies(name_prefix: str = "", suppress: bool = True) -> str:
         "        _changed.append(str(_b.Name))\n"
         'print(json.dumps({"ok": True, "affected": len(_changed), "bodies": _changed[:20]}))\n'
     )
-    try:
-        return _json(json.loads(result))
-    except Exception:
-        return _json({"ok": True, "raw_output": result})
+    return _result(result)
 
 
 @mcp.tool()
@@ -717,10 +961,7 @@ def list_point_masses() -> str:
         '        "named_selection": ns_name})\n'
         'print(json.dumps({"point_masses": out, "count": len(out)}))\n'
     )
-    try:
-        return _json({"ok": True, **json.loads(result)})
-    except Exception:
-        return _json({"ok": True, "raw_output": result})
+    return _result(result)
 
 
 # ---------------------------------------------------------------------------
@@ -745,10 +986,7 @@ def add_frictionless_support(named_selection: str, analysis_index: int = 0) -> s
         "    _bc.Location = _ns\n"
         '    print(json.dumps({"ok": True, "message": "Frictionless Support added"}))\n'
     )
-    try:
-        return _json(json.loads(result))
-    except Exception:
-        return _json({"ok": True, "raw_output": result})
+    return _result(result)
 
 
 @mcp.tool()
@@ -791,10 +1029,7 @@ def add_displacement(
         + comp_line("Z", z_mm)
         + '    print(json.dumps({"ok": True, "message": "Displacement added"}))\n'
     )
-    try:
-        return _json(json.loads(result))
-    except Exception:
-        return _json({"ok": True, "raw_output": result})
+    return _result(result)
 
 
 @mcp.tool()
@@ -853,10 +1088,7 @@ def add_remote_displacement(
         + rot_line("Z", rot_z_deg)
         + '    print(json.dumps({"ok": True, "message": "Remote Displacement added"}))\n'
     )
-    try:
-        return _json(json.loads(result))
-    except Exception:
-        return _json({"ok": True, "raw_output": result})
+    return _result(result)
 
 
 @mcp.tool()
@@ -888,10 +1120,7 @@ def add_standard_gravity(
         + ', "m s^-2"))\n'
         'print(json.dumps({"ok": True, "message": "Standard Earth Gravity added"}))\n'
     )
-    try:
-        return _json(json.loads(result))
-    except Exception:
-        return _json({"ok": True, "raw_output": result})
+    return _result(result)
 
 
 @mcp.tool()
@@ -921,10 +1150,7 @@ def add_remote_force(
         "    _bc.ZComponent.Output.SetDiscreteValue(0, Quantity(" + str(fz_n) + ', "N"))\n'
         '    print(json.dumps({"ok": True, "message": "Remote Force added"}))\n'
     )
-    try:
-        return _json(json.loads(result))
-    except Exception:
-        return _json({"ok": True, "raw_output": result})
+    return _result(result)
 
 
 @mcp.tool()
@@ -954,10 +1180,7 @@ def add_moment(
         "    _bc.ZComponent.Output.SetDiscreteValue(0, Quantity(" + str(mz_nm) + ', "N m"))\n'
         '    print(json.dumps({"ok": True, "message": "Moment added"}))\n'
     )
-    try:
-        return _json(json.loads(result))
-    except Exception:
-        return _json({"ok": True, "raw_output": result})
+    return _result(result)
 
 
 # ---------------------------------------------------------------------------
@@ -984,10 +1207,7 @@ def add_equivalent_stress(named_selection: str = "", analysis_index: int = 0) ->
         "_r = _solution.AddEquivalentStress()\n" + scope_lines + "_solution.EvaluateAllResults()\n"
         'print(json.dumps({"ok": True, "max": str(_r.Maximum), "min": str(_r.Minimum)}))\n'
     )
-    try:
-        return _json(json.loads(result))
-    except Exception:
-        return _json({"ok": True, "raw_output": result})
+    return _result(result)
 
 
 @mcp.tool()
@@ -1024,10 +1244,7 @@ def add_directional_deformation(
         + axis_key
         + '", "max": str(_r.Maximum), "min": str(_r.Minimum)}))\n'
     )
-    try:
-        return _json(json.loads(result))
-    except Exception:
-        return _json({"ok": True, "raw_output": result})
+    return _result(result)
 
 
 @mcp.tool()
@@ -1053,10 +1270,7 @@ def add_principal_stress(which: str = "max", analysis_index: int = 0) -> str:
         + _esc(which)
         + ' principal", "max": str(_r.Maximum), "min": str(_r.Minimum)}))\n'
     )
-    try:
-        return _json(json.loads(result))
-    except Exception:
-        return _json({"ok": True, "raw_output": result})
+    return _result(result)
 
 
 @mcp.tool()
@@ -1074,10 +1288,7 @@ def add_stress_tool(analysis_index: int = 0) -> str:
         "_solution.EvaluateAllResults()\n"
         'print(json.dumps({"ok": True, "message": "Stress Tool added and evaluated"}))\n'
     )
-    try:
-        return _json(json.loads(result))
-    except Exception:
-        return _json({"ok": True, "raw_output": result})
+    return _result(result)
 
 
 @mcp.tool()
@@ -1099,10 +1310,7 @@ def add_reaction_force(named_selection: str, analysis_index: int = 0) -> str:
         "    _solution.EvaluateAllResults()\n"
         '    print(json.dumps({"ok": True, "x": str(_r.XAxis), "y": str(_r.YAxis), "z": str(_r.ZAxis), "total": str(_r.Total)}))\n'
     )
-    try:
-        return _json(json.loads(result))
-    except Exception:
-        return _json({"ok": True, "raw_output": result})
+    return _result(result)
 
 
 def _build_pm_script(match_lines: str, ns_label: str, prox_mult: float = 3.0) -> str:
@@ -1277,18 +1485,6 @@ def _build_pm_script(match_lines: str, ns_label: str, prox_mult: float = 3.0) ->
     )
 
 
-def _extract_json(raw: str):
-    """Pull the first JSON object line out of raw output (past ACT log lines)."""
-    for line in raw.splitlines():
-        line = line.strip()
-        if line.startswith("{"):
-            try:
-                return json.loads(line)
-            except Exception:
-                pass
-    return {"ok": True, "raw_output": raw}
-
-
 @mcp.tool()
 def convert_prefix_to_point_mass(body_name_prefix: str, proximity_multiplier: float = 3.0) -> str:
     """Convert all unsuppressed bodies whose name starts with body_name_prefix to a
@@ -1314,8 +1510,7 @@ def convert_prefix_to_point_mass(body_name_prefix: str, proximity_multiplier: fl
         .replace("\r", "")
         .replace("\t", "")
     )
-    raw = _run(_build_pm_script(match, ns_label, proximity_multiplier))
-    return _json(_extract_json(raw))
+    return _result(_run(_build_pm_script(match, ns_label, proximity_multiplier)))
 
 
 @mcp.tool()
@@ -1342,13 +1537,14 @@ def convert_part_to_point_mass(part_name: str, proximity_multiplier: float = 3.0
         .replace("\r", "")
         .replace("\t", "")
     )
-    raw = _run(_build_pm_script(match, ns_label, proximity_multiplier))
-    return _json(_extract_json(raw))
+    return _result(_run(_build_pm_script(match, ns_label, proximity_multiplier)))
 
 
 def main():
-    print("ANSYS Mechanical MCP Server v" + __version__)
-    print("Starting...")
+    # stderr, never stdout: MCP frames JSON-RPC on stdout, so a banner
+    # written there is protocol corruption that strict clients reject.
+    print("ANSYS Mechanical MCP Server v" + __version__, file=sys.stderr)
+    print("Starting...", file=sys.stderr)
     mcp.run()
 
 
