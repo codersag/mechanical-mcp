@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- **ACP server** (`ansys-acp-mcp`): PyACP-based tools to launch ACP, import shell meshes, define materials/fabrics/rosettes/oriented selection sets, build layups and solid models, export and convert CDBs for Mechanical, and generate Workbench ACP scripts. Install with the `acp` extra.
+
 ## [1.0.0] - 2026-06-23
 
 ### Added

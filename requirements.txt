@@ -1,6 +1,10 @@
 ansys-mechanical-core>=0.10.0
 mcp[cli]>=1.0,<2   # mcp 2.x removed mcp.server.fastmcp
 
+# Optional: needed only for the ACP server (acp_mcp_server.py)
+# pip install "ansys-mechanical-mcp[acp]"
+# ansys-acp-core>=0.3
+
 # Optional: needed only for generate_report(..., fmt="docx")
 # pip install "ansys-mechanical-mcp[report]"
 # python-docx>=1.1.0

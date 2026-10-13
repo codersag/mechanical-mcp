@@ -5,12 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ansys-mechanical-mcp"
 version = "1.0.1"
-description = "MCP server that connects AI clients to ANSYS Mechanical via PyMechanical gRPC"
+description = "MCP servers that connect AI clients to ANSYS Mechanical (PyMechanical gRPC) and ANSYS ACP (PyACP)"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 authors = [{ name = "Sagar Mali" }]
-keywords = ["ansys", "mechanical", "mcp", "fea", "simulation", "cae"]
+keywords = ["ansys", "mechanical", "acp", "composites", "mcp", "fea", "simulation", "cae"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
@@ -35,8 +35,12 @@ Repository = "https://github.com/codersag/mechanical-mcp"
 
 [project.scripts]
 ansys-mechanical-mcp = "mechanical_mcp_server:main"
+ansys-acp-mcp = "acp_mcp_server:main"
 
 [project.optional-dependencies]
+acp = [
+    "ansys-acp-core>=0.3",
+]
 report = [
     "python-docx>=1.1.0",
 ]
@@ -48,7 +52,12 @@ dev = [
 ]
 
 [tool.setuptools]
-py-modules = ["mechanical_mcp_server"]
+py-modules = [
+    "mechanical_mcp_server",
+    "acp_mcp_server",
+    "acp_cdb_tools",
+    "acp_wb_scripts",
+]
 
 [tool.ruff]
 line-length = 100

@@ -17,6 +17,6 @@ jobs:
       - name: Install linters
         run: pip install ruff black
       - name: Ruff
-        run: ruff check mechanical_mcp_server.py
+        run: ruff check mechanical_mcp_server.py acp_mcp_server.py acp_cdb_tools.py acp_wb_scripts.py
       - name: Black
-        run: black --check --target-version py310 mechanical_mcp_server.py
+        run: black --check --target-version py310 mechanical_mcp_server.py acp_mcp_server.py acp_cdb_tools.py acp_wb_scripts.py
