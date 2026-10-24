@@ -1,0 +1,84 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ansys-mechanical-mcp"
+version = "1.4.0"
+description = "MCP servers that connect AI clients to ANSYS Mechanical (PyMechanical gRPC) and ANSYS ACP (PyACP)"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+authors = [{ name = "codersag" }]
+keywords = ["ansys", "mechanical", "acp", "composites", "mcp", "fea", "simulation", "cae"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+    "ansys-mechanical-core>=0.10.0",
+    # Upper bound is load-bearing: mcp 2.x renamed FastMCP to MCPServer and
+    # removed mcp.server.fastmcp, so an unpinned install breaks at import.
+    "mcp[cli]>=1.0,<2",
+]
+
+[project.urls]
+Repository = "https://github.com/codersag/mechanical-mcp"
+"Bug Tracker" = "https://github.com/codersag/mechanical-mcp/issues"
+
+[project.scripts]
+ansys-mechanical-mcp = "mechanical_mcp_server:main"
+ansys-acp-mcp = "acp_mcp_server:main"
+
+[project.optional-dependencies]
+acp = [
+    "ansys-acp-core>=0.3",
+]
+postproc = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+]
+report = [
+    "python-docx>=1.1.0",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "black",
+    "ruff",
+]
+
+[tool.setuptools]
+py-modules = [
+    "mechanical_mcp_server",
+    "mechanical_scripts",
+    "mechanical_postproc",
+    "mcp_paths",
+    "acp_mcp_server",
+    "acp_cdb_tools",
+    "acp_wb_scripts",
+]
+
+[tool.ruff]
+line-length = 100
+
+# Selected explicitly rather than left to ruff's defaults, which widen between
+# releases and can turn a green build red with no code change.
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "W", "I"]
+
+[tool.black]
+line-length = 100
+
+[tool.pytest.ini_options]
+# examples/stdio_smoke_test.py starts a real server when imported; it is not a test.
+testpaths = ["tests"]
+norecursedirs = ["examples", ".git", ".venv", "build", "dist"]
+filterwarnings = ["ignore::pytest.PytestUnraisableExceptionWarning"]
